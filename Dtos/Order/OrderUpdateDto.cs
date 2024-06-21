@@ -1,6 +1,10 @@
-﻿namespace InvestmentOrdersAPI.Dtos.Order;
+﻿using System.ComponentModel.DataAnnotations;
+
+namespace InvestmentOrdersAPI.Dtos.Order;
 
 public class OrderUpdateDto
 {
-    public int? State { get; set; }
+
+    [Required(ErrorMessage = "StateId es requerido.")]
+    public int StateId { get; set; }
 }

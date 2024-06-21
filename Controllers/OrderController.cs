@@ -1,9 +1,11 @@
 using AutoMapper;
+using investmentOrders.DataAccess;
 using InvestmentOrdersAPI.DataAccess.Models;
-using InvestmentOrdersAPI.DataAccess.Repositories;
+using InvestmentOrdersAPI.DataAccess.Repositories.AssetRepository;
+using InvestmentOrdersAPI.DataAccess.Repositories.OrderRepository.OrderRepository;
+using InvestmentOrdersAPI.DataAccess.Repositories.OrderStateRepository;
 using InvestmentOrdersAPI.Dtos.Order;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Logging;
 using Swashbuckle.AspNetCore.Annotations;
 
 namespace InvestmentOrdersAPI.Controllers;
@@ -12,12 +14,21 @@ namespace InvestmentOrdersAPI.Controllers;
 public class OrderController : ControllerBase
 {
     private readonly IOrderRepository orderRepository;
+    private readonly IOrderStateRepository orderStateRepository;
+    private readonly IAssetRepository assetRepository;
     private readonly IMapper mapper;
     private readonly ILogger<OrderController> logger;
 
-    public OrderController(IOrderRepository orderRepository, IMapper mapper, ILogger<OrderController> logger)
+    public OrderController(
+        IOrderRepository orderRepository,
+        IOrderStateRepository orderStateRepository,
+        IAssetRepository assetRepository,
+        IMapper mapper,
+        ILogger<OrderController> logger)
     {
-        this.orderRepository = orderRepository ?? throw new ArgumentNullException(nameof(orderRepository)); ;
+        this.orderRepository = orderRepository ?? throw new ArgumentNullException(nameof(orderRepository));
+        this.orderStateRepository = orderStateRepository ?? throw new ArgumentNullException(nameof(orderStateRepository));
+        this.assetRepository = assetRepository ?? throw new ArgumentNullException(nameof(assetRepository));
         this.mapper = mapper ?? throw new ArgumentNullException(nameof(mapper));
         this.logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
@@ -28,9 +39,9 @@ public class OrderController : ControllerBase
     [SwaggerResponse(200, "Lista de órdenes obtenida exitosamente.", typeof(IEnumerable<OrderReadDto>))]
     public async Task<ActionResult<IEnumerable<Order>>> GetOrders()
     {
-        logger.LogInformation("Obteniendo las ordenes");
-        var orders = await orderRepository.GetOrdersAsync();
-        var orderDtos = mapper.Map<IEnumerable<OrderReadDto>>(orders);
+        logger.LogInformation("Obteniendo las órdenes");
+        IEnumerable<Order> orders = await orderRepository.GetAllOrdersWithRelationsAsync();
+        IEnumerable<OrderReadDto> orderDtos = mapper.Map<IEnumerable<OrderReadDto>>(orders);
         return Ok(orderDtos);
     }
 
@@ -40,16 +51,17 @@ public class OrderController : ControllerBase
     [SwaggerResponse(404, "No se encontró la orden con el ID especificado.")]
     public async Task<ActionResult<Order>> GetOrder(int id)
     {
-        logger.LogInformation("Obteniendo la orden con ID {OrdenId}", id);
-        var order = await orderRepository.GetOrderByIdAsync(id);
-
+        logger.LogInformation("Obteniendo la orden con ID {OrderId}", id);
+        Order order = await orderRepository.GetByIdAsync(id);
         if (order == null)
         {
-            logger.LogWarning("No se encontro la orden con el ID {OrdenId}", id);
+            logger.LogWarning("No se encontró la orden con el ID {OrderId}", id);
             return NotFound(new { Message = "No se encontró la orden con el ID especificado." });
         }
 
-        var orderDto = mapper.Map<OrderReadDto>(order);
+        OrderReadDto orderDto = mapper.Map<OrderReadDto>(order);
+        orderDto.AssetName = (await assetRepository.GetAssetByIdAsync(order.AssetId))?.Name;
+        orderDto.StateDescription = (await orderStateRepository.GetOrderStateByIdAsync(order.OrderStateId))?.Description;
 
         return Ok(orderDto);
     }
@@ -58,55 +70,55 @@ public class OrderController : ControllerBase
     [SwaggerOperation(Summary = "Crea una nueva orden", Description = "Agrega una nueva orden a la base de datos.")]
     [SwaggerResponse(201, "Orden creada exitosamente.", typeof(OrderReadDto))]
     [SwaggerResponse(400, "Solicitud inválida.")]
-    public async Task<ActionResult<Order>> PostOrder([FromBody] OrderCreateDto orderCreateDto)
+    public async Task<ActionResult<Order>> PostOrder(OrderCreateDto orderCreateDto)
     {
-        if (!ModelState.IsValid)
+        Asset asset = await assetRepository.GetAssetByIdAsync(orderCreateDto.AssetId);
+        if (asset == null)
         {
-            return BadRequest(ModelState);
+            logger.LogWarning("Datos de la orden inválidos");
+            return BadRequest("AssetId inválido");
         }
 
-        //if (orderCreateDto == null)
-        //{
-        //    logger.LogWarning("Datos de la orden invalidos");
-        //    return BadRequest(new { Message = "Datos de la orden inválidos." });
-        //}
+        Order order = mapper.Map<Order>(orderCreateDto);
+        OrderState orderState = await orderStateRepository.GetOrderStateByDescriptionAsync("En proceso");
+        if (orderState == null)
+        {
+            logger.LogWarning("No se encontró el estado 'En proceso'");
+            return BadRequest("Estado 'En proceso' no encontrado");
+        }
 
-        var order = mapper.Map<Order>(orderCreateDto);
-        order.State = 0;
-        order.TotalAmount = CalculateTotalAmount(order);
+        order.OrderStateId = orderState.Id;
+        order.TotalAmount = await orderRepository.CalculateTotalAmountAsync(order);
 
-        await orderRepository.AddOrderAsync(order);
+        await orderRepository.AddAsync(order);
 
-        var createdOrderDto = mapper.Map<OrderReadDto>(order);
+        OrderReadDto orderReadDto = mapper.Map<OrderReadDto>(order);
+        orderReadDto.AssetName = asset.Name;
+        orderReadDto.StateDescription = orderState.Description;
 
-        logger.LogInformation("Se creo la orden correctamente con el ID {OrdenId}", createdOrderDto.Id);
-        return CreatedAtAction(nameof(GetOrder), new { id = createdOrderDto.Id }, createdOrderDto);
-
-
+        logger.LogInformation("Se creó la orden correctamente con el ID {OrderId}", orderReadDto.Id);
+        return CreatedAtAction(nameof(GetOrder), new { id = order.Id }, orderReadDto);
     }
 
     [HttpPut("{id}")]
     [SwaggerOperation(Summary = "Actualiza una orden existente", Description = "Actualiza los detalles de una orden existente.")]
     [SwaggerResponse(204, "Orden actualizada exitosamente.")]
     [SwaggerResponse(404, "No se encontró la orden con el ID especificado.")]
-    public async Task<IActionResult> PutOrder(int id, [FromBody] OrderUpdateDto orderUpdateDto)
+    public async Task<IActionResult> PutOrder(int id, OrderUpdateDto orderUpdateDto)
     {
-        if (!ModelState.IsValid)
-        {
-            return BadRequest(ModelState);
-        }
-
-        var existingOrder = await orderRepository.GetOrderByIdAsync(id);
+        Order existingOrder = await orderRepository.GetByIdAsync(id);
         if (existingOrder == null)
         {
-            logger.LogWarning("No se encontro la orden con el ID {OrdenId}", id);
+            logger.LogWarning("No se encontró la orden con el ID {OrderId}", id);
             return NotFound(new { Message = "No se encontró la orden con el ID especificado." });
         }
 
-        existingOrder.State = orderUpdateDto.State;
-        await orderRepository.UpdateOrderAsync(existingOrder);
+        existingOrder.OrderStateId = orderUpdateDto.StateId;
+        existingOrder.TotalAmount = await orderRepository.CalculateTotalAmountAsync(existingOrder);
 
-        logger.LogInformation("La orden con el ID {OrdenId} se actualizo correctamente", id);
+        await orderRepository.UpdateAsync(existingOrder);
+
+        logger.LogInformation("La orden con el ID {OrderId} se actualizó correctamente", id);
         return NoContent();
     }
 
@@ -116,36 +128,18 @@ public class OrderController : ControllerBase
     [SwaggerResponse(404, "No se encontró la orden con el ID especificado.")]
     public async Task<IActionResult> DeleteOrder(int id)
     {
-        var order = await orderRepository.GetOrderByIdAsync(id);
+        Order order = await orderRepository.GetByIdAsync(id);
         if (order == null)
         {
             logger.LogWarning("No se encontro la orden con el ID {OrdenId}", id);
             return NotFound(new { Message = "No se encontró la orden con el ID especificado." });
         }
 
-        await orderRepository.DeleteOrderAsync(id);
+        await orderRepository.DeleteAsync(id);
 
         logger.LogInformation("Orden con el ID {OrdenId} se elimino correctamente", id);
         return NoContent();
     }
 
-    private decimal CalculateTotalAmount(Order order)
-    {
-        decimal totalAmount = order.Price * order.Amount;
-
-        if (string.Equals(order.AssetName, "Acción", StringComparison.OrdinalIgnoreCase))
-        {
-            var fee = totalAmount * 0.006m;
-            var tax = fee * 0.21m;
-            totalAmount += fee + tax;
-        }
-        else if (string.Equals(order.AssetName, "Bono", StringComparison.OrdinalIgnoreCase))
-        {
-            var fee = totalAmount * 0.002m;
-            var tax = fee * 0.21m;
-            totalAmount += fee + tax;
-        }
-        return totalAmount;
-    }
 }
 
