@@ -1,5 +1,4 @@
-﻿using AutoMapper;
-using InvestmentOrdersAPI.DataAccess.Models;
+﻿using InvestmentOrdersAPI.DataAccess.Models;
 using InvestmentOrdersAPI.Dtos.Order;
 
 namespace InvestmentOrdersAPI.DataAccess.MappingProfiles.cs;

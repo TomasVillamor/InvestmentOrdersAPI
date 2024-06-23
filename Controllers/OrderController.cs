@@ -1,12 +1,9 @@
-using AutoMapper;
-using investmentOrders.DataAccess;
 using InvestmentOrdersAPI.DataAccess.Models;
 using InvestmentOrdersAPI.DataAccess.Repositories.AssetRepository;
 using InvestmentOrdersAPI.DataAccess.Repositories.OrderRepository.OrderRepository;
 using InvestmentOrdersAPI.DataAccess.Repositories.OrderStateRepository;
 using InvestmentOrdersAPI.Dtos.Order;
-using Microsoft.AspNetCore.Mvc;
-using Swashbuckle.AspNetCore.Annotations;
+
 
 namespace InvestmentOrdersAPI.Controllers;
 [ApiController]
@@ -60,8 +57,8 @@ public class OrderController : ControllerBase
         }
 
         OrderReadDto orderDto = mapper.Map<OrderReadDto>(order);
-        orderDto.AssetName = (await assetRepository.GetAssetByIdAsync(order.AssetId))?.Name;
-        orderDto.StateDescription = (await orderStateRepository.GetOrderStateByIdAsync(order.OrderStateId))?.Description;
+        orderDto.AssetName = (await assetRepository.GetByIdAsync(order.AssetId)).Name;
+        orderDto.StateDescription = (await orderStateRepository.GetByIdAsync(order.OrderStateId)).Description;
 
         return Ok(orderDto);
     }
@@ -72,7 +69,7 @@ public class OrderController : ControllerBase
     [SwaggerResponse(400, "Solicitud inválida.")]
     public async Task<ActionResult<Order>> PostOrder(OrderCreateDto orderCreateDto)
     {
-        Asset asset = await assetRepository.GetAssetByIdAsync(orderCreateDto.AssetId);
+        Asset asset = await assetRepository.GetByIdAsync(orderCreateDto.AssetId);
         if (asset == null)
         {
             logger.LogWarning("Datos de la orden inválidos");

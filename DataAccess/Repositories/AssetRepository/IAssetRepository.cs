@@ -3,7 +3,4 @@ using InvestmentOrdersAPI.DataAccess.Repositories.GenericRepository;
 
 namespace InvestmentOrdersAPI.DataAccess.Repositories.AssetRepository;
 
-public interface IAssetRepository : IGenericRepository<Asset>
-{
-    Task<Asset> GetAssetByIdAsync(int id);
-}
+public interface IAssetRepository : IGenericRepository<Asset> { }

@@ -1,7 +1,4 @@
-﻿using System.ComponentModel;
-using System.ComponentModel.DataAnnotations;
-
-namespace InvestmentOrdersAPI.Dtos.Order;
+﻿namespace InvestmentOrdersAPI.Dtos.Order;
 
 public class OrderCreateDto
 {

@@ -1,5 +1,4 @@
 ﻿using InvestmentOrdersAPI.DataAccess.Models;
-using Microsoft.EntityFrameworkCore;
 
 namespace investmentOrders.DataAccess;
 

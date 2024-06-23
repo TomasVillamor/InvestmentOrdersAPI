@@ -1,7 +1,7 @@
 ﻿using investmentOrders.DataAccess;
 using InvestmentOrdersAPI.DataAccess.Models;
 using InvestmentOrdersAPI.DataAccess.Repositories.GenericRepository;
-using Microsoft.EntityFrameworkCore;
+
 
 namespace InvestmentOrdersAPI.DataAccess.Repositories.OrderRepository.OrderRepository;
 
@@ -31,7 +31,7 @@ public class OrderRepository : GenericRepository<Order>, IOrderRepository
         }
 
         decimal totalAmount = 0;
-        string assetTypeDescription = asset.AssetType.Description.Trim().ToLowerInvariant();
+        string assetTypeDescription = asset.AssetType.Description.ToLowerInvariant();
 
         switch (assetTypeDescription)
         {
@@ -40,12 +40,12 @@ public class OrderRepository : GenericRepository<Order>, IOrderRepository
                 break;
 
             case "bono":
-                decimal bondPrice = order.Price ?? 0;
+                decimal bondPrice = order.Price!.Value;
                 totalAmount = (bondPrice * order.Quantity) * 1.002m * 1.21m;
                 break;
 
             case "fci":
-                decimal fciPrice = order.Price ?? 0;
+                decimal fciPrice = order.Price!.Value;
                 totalAmount = fciPrice * order.Quantity;
                 break;
 
